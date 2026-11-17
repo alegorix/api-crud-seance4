@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Produits - Client API REST</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Catalogue Produits</h1>
+        <p class="subtitle">Séance 4 : Consommation de l'API REST avec Fetch API</p>
+    </header>
+
+    <div id="toast" class="toast"></div>
+
+    <div class="card">
+        <h2 id="form-heading">Ajouter un produit</h2>
+        <input type="hidden" id="prod-id">
+        <div class="form-row">
+            <input type="text" id="prod-name" placeholder="Nom du produit (ex: Écran 4K)" required>
+            <input type="number" step="0.01" min="0" id="prod-price" placeholder="Prix en € (ex: 299.99)" required>
+            <button id="submit-btn" class="btn-primary" onclick="handleFormSubmit()">Enregistrer</button>
+            <button id="cancel-btn" class="btn-cancel" onclick="resetForm()">Annuler</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Produits en stock</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 10%;">ID</th>
+                    <th style="width: 50%;">Nom</th>
+                    <th style="width: 20%;">Prix</th>
+                    <th style="width: 20%;">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="products-tbody">
+                <tr><td colspan="4" style="text-align:center;">Chargement...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // Détection de l'URL de base relative pour fonctionner avec ou sans sous-dossiers
+        const API_URL = 'index.php/api/products';
+
+        function showMessage(text, isError = false) {
+            const toast = document.getElementById('toast');
+            toast.textContent = text;
+            toast.className = 'toast ' + (isError ? 'error' : 'success');
+            toast.style.display = 'block';
+            setTimeout(() => { toast.style.display = 'none'; }, 3000);
+        }
+
+        async function loadProducts() {
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) throw new Error('Erreur HTTP ' + response.status);
+                const products = await response.json();
+
+                const tbody = document.getElementById('products-tbody');
+                tbody.innerHTML = '';
+
+                if (products.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#94a3b8;">Aucun produit disponible.</td></tr>';
+                    return;
+                }
+
+                products.forEach(p => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><strong>#${p.id}</strong></td>
+                        <td>${escapeHtml(p.name)}</td>
+                        <td>${parseFloat(p.price).toFixed(2)} €</td>
+                        <td class="actions">
+                            <button class="btn-edit" onclick="startEdit(${p.id}, '${escapeHtml(p.name)}', ${p.price})">Modifier</button>
+                            <button class="btn-delete" onclick="deleteProduct(${p.id})">Supprimer</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                showMessage('Impossible de charger les produits : ' + err.message, true);
+            }
+        }
+
+        async function handleFormSubmit() {
+            const id = document.getElementById('prod-id').value;
+            const name = document.getElementById('prod-name').value.trim();
+            const price = parseFloat(document.getElementById('prod-price').value);
+
+            if (!name || isNaN(price)) {
+                showMessage('Veuillez remplir un nom valide et un prix numérique.', true);
+                return;
+            }
+
+            const payload = { name, price };
+            const isEditing = Boolean(id);
+            const targetUrl = isEditing ? `${API_URL}/${id}` : API_URL;
+            const method = isEditing ? 'PUT' : 'POST';
+
+            try {
+                const response = await fetch(targetUrl, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.message || 'Une erreur est survenue.');
+                }
+
+                showMessage(data.message || (isEditing ? 'Produit mis à jour !' : 'Produit ajouté !'));
+                resetForm();
+                loadProducts();
+            } catch (err) {
+                showMessage(err.message, true);
+            }
+        }
+
+        async function deleteProduct(id) {
+            if (!confirm(`Confirmez-vous la suppression du produit #${id} ?`)) return;
+
+            try {
+                const response = await fetch(`${API_URL}/${id}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.message || 'Erreur lors de la suppression.');
+                }
+
+                showMessage(data.message || 'Produit supprimé.');
+                loadProducts();
+            } catch (err) {
+                showMessage(err.message, true);
+            }
+        }
+
+        function startEdit(id, name, price) {
+            document.getElementById('prod-id').value = id;
+            document.getElementById('prod-name').value = name;
+            document.getElementById('prod-price').value = price;
+            document.getElementById('form-heading').textContent = `Modifier le produit #${id}`;
+            document.getElementById('submit-btn').textContent = 'Mettre à jour';
+            document.getElementById('cancel-btn').style.display = 'inline-block';
+        }
+
+        function resetForm() {
+            document.getElementById('prod-id').value = '';
+            document.getElementById('prod-name').value = '';
+            document.getElementById('prod-price').value = '';
+            document.getElementById('form-heading').textContent = 'Ajouter un produit';
+            document.getElementById('submit-btn').textContent = 'Enregistrer';
+            document.getElementById('cancel-btn').style.display = 'none';
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        }
+
+        // Chargement initial des données au chargement de la page
+        loadProducts();
+    </script>
+</body>
+</html>
